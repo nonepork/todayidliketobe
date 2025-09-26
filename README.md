@@ -1,6 +1,19 @@
-# Today I'd like to be
+<div align="center">
 
-### What is this?
+Today I'd like to be
+
+</div>
+
+## Table of contents
+
+- [What is this](#-what-is-this)
+- [Installation](#-installation)
+- [Usage](#-preview)
+- [FAQ](#-faq)
+  - [What is this name](#-what-is-this-name)
+  - [Artefacts](#-artefacts)
+
+## What is this?
 
 This is a simple cli tool for switching your git account, to be specific:
 
