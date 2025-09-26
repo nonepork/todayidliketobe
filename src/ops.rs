@@ -1,0 +1,251 @@
+use crate::args::{NewUserArgs, UserArgs};
+use crate::config::{User, add_user, config_exists, create_config, delete_user, read_config_file};
+use crate::git::{check_cwd_is_repo, get_repo_name, get_repo_name_from_user, set_git_remote};
+use crate::ssh::{add_to_ssh_config, generate_ssh_key, get_ssh_dir_path, remove_from_ssh_config};
+use inquire::validator::Validation;
+use inquire::{Confirm, Password, PasswordDisplayMode};
+use log::info;
+use regex::Regex;
+use std::process::Command;
+
+// TODO:
+// make return properly handled
+// print message better
+
+// WARN:
+// expect untested
+
+fn is_reasonable_email(email: &str) -> bool {
+    // intentional basic check only
+    let re = Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").unwrap();
+    re.is_match(email)
+}
+
+pub fn handle_user_add(user_args: NewUserArgs) {
+    let user = user_args.user;
+    let email = user_args.email;
+
+    println!("Adding user: {}", user);
+
+    if !is_reasonable_email(&email) {
+        eprintln!(
+            "Warning: '{}' doesn't look like a valid email address",
+            email
+        );
+        let ans = Confirm::new("Continue anyway?")
+            .with_default(false)
+            .prompt();
+
+        match ans {
+            Ok(true) => {}
+            Ok(false) => {
+                println!("Aborting.");
+                return;
+            }
+            Err(_) => {
+                println!("Aborting.");
+                return;
+            }
+        }
+    }
+
+    if !config_exists() {
+        match create_config() {
+            Ok(()) => {
+                info!("Created new config file.");
+            }
+            Err(err) => {
+                panic!("Error creating config: {}", err);
+            }
+        }
+    }
+
+    let validator = |input: &str| {
+        if input.contains(' ') {
+            Ok(Validation::Invalid(
+                "Passphrase cannot contain spaces".into(),
+            ))
+        } else {
+            Ok(Validation::Valid)
+        }
+    };
+
+    let passphrase = Password::new("Enter passphrase (leave empty for no passphrase):")
+        .with_display_mode(PasswordDisplayMode::Masked)
+        .with_validator(validator)
+        .prompt()
+        .expect("failed to read passphrase");
+
+    let ssh_file = format!("id_{}_ed25519", user);
+    let ssh_path = get_ssh_dir_path()
+        .expect("no home dir")
+        .join(&ssh_file)
+        .display()
+        .to_string();
+
+    let new_user = User {
+        name: user.clone(),
+        email: email.clone(),
+        origin: format!("git@github.com-{}:{}/", &user, &user),
+        ssh_key_path: ssh_path.clone(), // why is this single quoted
+    };
+
+    if let Err(err) = add_user(new_user) {
+        eprintln!("Error updating config: {}", err);
+        return;
+    }
+
+    let pub_content = generate_ssh_key(&user, &passphrase).expect("failed to generate ssh key");
+
+    println!("Public key (make sure to add to github):\n{}", pub_content);
+
+    // username is being used as host alias in ssh config
+    // check ssh for format
+    let host_alias = format!("github-{}", user);
+
+    add_to_ssh_config(&host_alias, &user, &ssh_path).expect("failed to update ssh config");
+
+    println!("User: {} <{}> added", user, email);
+}
+
+pub fn handle_user_remove(user: UserArgs) {
+    let user = user.user;
+
+    if !config_exists() {
+        println!("Config not found, add a new user via `tilb add`!");
+        return;
+    }
+
+    let config = match read_config_file() {
+        Ok(config) => config,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            println!("Config not found, add a new user via `tilb add`!");
+            return;
+        }
+        Err(err) => {
+            eprintln!("Error reading config: {}", err);
+            return;
+        }
+    };
+
+    if config.users.get(&user).is_none() {
+        eprintln!("User '{}' not found in config.", user);
+        return;
+    }
+
+    println!("NOTE: The ssh key for {} will not be delete", user);
+
+    let ans = Confirm::new(&format!("Are you sure you want to remove {}", user)) // i'm sorry?
+        .with_default(false)
+        .prompt();
+
+    match ans {
+        Ok(true) => {}
+        Ok(false) => {
+            println!("Aborting.");
+            return;
+        }
+        Err(_) => {
+            println!("Aborting.");
+            return;
+        }
+    }
+
+    if let Err(err) = delete_user(&user) {
+        eprintln!("Error deleting user: {}", err);
+        return;
+    }
+
+    let host_alias = format!("github-{}", user);
+    remove_from_ssh_config(&host_alias).expect("failed to update ssh config");
+
+    println!("User: {} removed", user);
+}
+
+pub fn handle_user_switch(user: UserArgs) {
+    let user = user.user;
+
+    if !check_cwd_is_repo() {
+        eprintln!("Current directory is not a git repository.");
+        return;
+    }
+
+    let config = match read_config_file() {
+        Ok(config) => config,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            println!("Config not found, add a new user via `tilb add`!");
+            return;
+        }
+        Err(err) => {
+            eprintln!("Error reading config: {}", err);
+            return;
+        }
+    };
+
+    let selected_user = if let Some(user_fetehed) = config.users.get(&user) {
+        user_fetehed
+    } else {
+        eprintln!("User '{}' not found in config.", user);
+        return;
+    };
+
+    let repo_name = match get_repo_name() {
+        // tries to automatically get repo name
+        Some(origin_url) => {
+            if let Some((_, name)) = origin_url.rsplit_once('/') {
+                name.to_string()
+            } else {
+                eprintln!("Could not parse repository name from origin URL");
+                get_repo_name_from_user()
+            }
+        }
+        // if unsuccessful, ask for it
+        None => get_repo_name_from_user(),
+    };
+
+    Command::new("git")
+        .arg("config")
+        .arg("--local")
+        .arg("user.name")
+        .arg(&selected_user.name)
+        .status()
+        .expect("Failed to set git user.name");
+
+    Command::new("git")
+        .arg("config")
+        .arg("--local")
+        .arg("user.email")
+        .arg(&selected_user.email)
+        .status()
+        .expect("Failed to set git user.email");
+
+    let full_origin = format!("{}{}", selected_user.origin, repo_name);
+
+    match set_git_remote(&full_origin) {
+        Ok(()) => {}
+        Err(err) => {
+            eprintln!("Error setting git remote: {}", err);
+            return;
+        }
+    }
+
+    println!("Switched to user: {}", selected_user.name);
+}
+
+pub fn handle_user_list() {
+    // TODO: print something if no users
+    match read_config_file() {
+        Ok(config) => {
+            println!("Users:");
+            for (_, user) in config.users {
+                println!("- {} <{}>", user.name, user.email);
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            println!("Config not found, add a new user via `tilb add`!");
+        }
+        Err(err) => {
+            eprintln!("Error reading config: {}", err);
+        }
+    }
+}
