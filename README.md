@@ -23,16 +23,27 @@ This is a simple cli tool for switching your git account, to be specific:
 
 ## Installation
 
-WIP
+Windows
+
+`cargo install todayidliketobe`
+
+Linux/macOS
+
+- Haven't tested
 
 ## Usage
 
-```bash
-tilb
+To check all possible actions:
 
+```bash
 tilb -h --help
+```
+
+Other stuff I havne't document:
+
+```bash
 tilb list
-tilb add [name]
+tilb add [name] [email]
 tilb switch [name]
 tilb remove [name]
 ```
