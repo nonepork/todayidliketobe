@@ -4,6 +4,8 @@ description = "A simple git account switcher"
 version = "0.1.0"
 edition = "2024"
 license = "WTFPL"
+repository = "https://github.com/nonepork/todayidliketobe"
+keywords = ["git", "account", "cli", "github"]
 
 [[bin]]
 name = "tilb"
