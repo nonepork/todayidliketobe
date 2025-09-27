@@ -8,7 +8,7 @@ Today I'd like to be
 
 - [What is this](#what-is-this)
 - [Installation](#installation)
-- [Usage](#preview)
+- [Usage](#usage)
 - [FAQ](#faq)
   - [What is this name](#what-is-this-name)
   - [Artefacts](#artefacts)
@@ -25,11 +25,13 @@ This is a simple cli tool for switching your git account, to be specific:
 
 Windows
 
-`cargo install todayidliketobe`
+```bash
+cargo install todayidliketobe
+```
 
 Linux/macOS
 
-- Haven't tested
+Same as above, haven't tested but should work in theory.
 
 ## Usage
 
@@ -39,13 +41,32 @@ To check all possible actions:
 tilb -h --help
 ```
 
-Other stuff I havne't document:
+Say you have two git accounts, one for work named as workuser and the other for personal named as personaluser.
+You can add those users like so:
+
+```bash
+tilb add workuser workusermail@lovely.com
+tilb add personaluser personaluser@lonely.com
+```
+
+Once added, you can check it has been successfully add via:
 
 ```bash
 tilb list
-tilb add [name] [email]
-tilb switch [name]
-tilb remove [name]
+```
+
+Now say you already logged in as personaluser before, but you got a repo folder that requires workuser, you can cd into the folder then:
+
+```bash
+tilb switch workuser
+```
+
+then do your git commands.
+
+Now say you got laid off, you can do
+
+```bash
+tilb remove workuser
 ```
 
 ## FAQ
