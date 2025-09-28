@@ -31,6 +31,9 @@ pub struct NewUserArgs {
     pub user: String,
     /// The email shown in commits
     pub email: String,
+    /// The website of the git host, e.g. github, gitlab, bitbucket
+    #[arg(long, short, default_value_t = String::from("github"))]
+    pub website: String,
 }
 
 #[derive(Debug, Args)]

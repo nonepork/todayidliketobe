@@ -18,6 +18,9 @@ Host github.com-username
 i prob should support websites other than github?
 */
 
+// TODO:
+// uses include in ssh config rather than modifying main config
+
 fn get_ssh_config_path() -> Option<PathBuf> {
     UserDirs::new().map(|user_dirs| user_dirs.home_dir().join(".ssh").join("config"))
 }
@@ -92,6 +95,7 @@ pub fn generate_ssh_key(user: &str, passphrase: &str) -> Result<String, Error> {
 
 pub fn add_to_ssh_config(
     host_alias: &str,
+    host_name: &str,
     user: &str,
     identity_file: &str,
 ) -> Result<(), std::io::Error> {
@@ -114,7 +118,7 @@ pub fn add_to_ssh_config(
     let new_block = vec![
         block_marker.to_string(),
         block_header.clone(),
-        format!("  HostName {}", "github.com"),
+        format!("  HostName {}", host_name),
         format!("  User {}", user),
         format!("  IdentityFile {}", identity_file),
     ];

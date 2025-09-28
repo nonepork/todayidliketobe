@@ -10,8 +10,10 @@ use regex::Regex;
 use std::process::Command;
 
 // TODO:
+// support websites other than github
 // make return properly handled
 // print message better
+// handle ctrlc
 
 // WARN:
 // expect untested
@@ -25,8 +27,9 @@ fn is_reasonable_email(email: &str) -> bool {
 pub fn handle_user_add(user_args: NewUserArgs) {
     let user = user_args.user;
     let email = user_args.email;
+    let website = user_args.website;
 
-    println!("Adding user: {}", user);
+    println!("Adding user: {}", user.green());
 
     if !is_reasonable_email(&email) {
         eprintln!(
@@ -77,17 +80,17 @@ pub fn handle_user_add(user_args: NewUserArgs) {
         .prompt()
         .expect("failed to read passphrase");
 
-    let ssh_file = format!("id_{}_ed25519", user);
+    let ssh_file = format!("id_{}_ed25519", &user);
     let ssh_path = get_ssh_dir_path()
         .expect("no home dir")
-        .join(&ssh_file)
+        .join(ssh_file)
         .display()
         .to_string();
 
     let new_user = User {
         name: user.clone(),
         email: email.clone(),
-        origin: format!("git@github.com-{}:{}/", &user, &user),
+        origin: format!("git@{}-{}:{}/", &website, &user, &user),
         ssh_key_path: ssh_path.clone(), // why is this single quoted
     };
 
@@ -98,13 +101,17 @@ pub fn handle_user_add(user_args: NewUserArgs) {
 
     let pub_content = generate_ssh_key(&user, &passphrase).expect("failed to generate ssh key");
 
-    println!("Public key (make sure to add to github):\n{}", pub_content);
+    println!(
+        "Public key (make sure to add to {}):\n{}",
+        &website, &pub_content
+    );
 
     // username is being used as host alias in ssh config
     // check ssh for format
-    let host_alias = format!("github-{}", user);
+    let host_alias = format!("{}-{}", &website, &user);
 
-    add_to_ssh_config(&host_alias, &user, &ssh_path).expect("failed to update ssh config");
+    add_to_ssh_config(&host_alias, &website, &user, &ssh_path)
+        .expect("failed to update ssh config");
 
     println!("User: {} <{}> added", user.green(), email.green());
 }
@@ -140,9 +147,9 @@ pub fn handle_user_remove(user: UserArgs) {
         return;
     }
 
-    println!("NOTE: The ssh key for {} will not be delete", user);
+    println!("NOTE: The ssh key for {} will not be delete", user.green());
 
-    let ans = Confirm::new(&format!("Are you sure you want to remove {}", user)) // i'm sorry?
+    let ans = Confirm::new(&format!("Are you sure you want to remove {}", &user)) // i'm sorry?
         .with_default(false)
         .prompt();
 
@@ -163,7 +170,7 @@ pub fn handle_user_remove(user: UserArgs) {
         return;
     }
 
-    let host_alias = format!("github-{}", user);
+    let host_alias = format!("github-{}", &user);
     remove_from_ssh_config(&host_alias).expect("failed to update ssh config");
 
     println!("User: {} removed", user.green());
@@ -254,7 +261,7 @@ pub fn handle_user_list() {
                 return;
             }
             for (_, user) in config.users {
-                println!("- {} <{}>", user.name, user.email);
+                println!("- {} <{}>", user.name.green(), user.email);
             }
         }
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
