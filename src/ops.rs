@@ -7,6 +7,7 @@ use inquire::{Confirm, Password, PasswordDisplayMode};
 use log::info;
 use owo_colors::OwoColorize;
 use regex::Regex;
+use std::collections::HashSet;
 use std::process::Command;
 
 // TODO:
@@ -22,6 +23,31 @@ fn is_reasonable_email(email: &str) -> bool {
     // intentional basic check only
     let re = Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").unwrap();
     re.is_match(email)
+}
+
+fn parse_domain_name(url: &str) -> Option<String> {
+    url.strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url)
+        .split('/')
+        .next()
+        .map(|s| s.to_string())
+}
+
+fn is_git_hosting_site(url: &str) -> bool {
+    let git_domains: HashSet<&str> = [
+        "github.com",
+        "gitlab.com",
+        "bitbucket.org",
+        "gitea.io",
+        "codeberg.org",
+        "sr.ht", // SourceHut
+    ]
+    .into();
+
+    parse_domain_name(url)
+        .map(|domain| git_domains.contains(domain.as_str()))
+        .unwrap_or(false)
 }
 
 pub fn handle_user_add(user_args: NewUserArgs) {
@@ -52,6 +78,35 @@ pub fn handle_user_add(user_args: NewUserArgs) {
             }
         }
     }
+
+    if !is_git_hosting_site(&website) {
+        eprintln!(
+            "{} doesn't look like a git hosting site",
+            email.bright_red()
+        );
+        let ans = Confirm::new("Continue anyway?")
+            .with_default(false)
+            .prompt();
+
+        match ans {
+            Ok(true) => {}
+            Ok(false) => {
+                println!("see ya (¯꒳¯)ᐝ");
+                return;
+            }
+            Err(_) => {
+                println!("see ya (¯꒳¯)ᐝ");
+                return;
+            }
+        }
+    }
+
+    let domain_name = parse_domain_name(&website).unwrap_or_else(|| {
+        eprintln!("Failed to parse domain name from URL: {}", website);
+        std::process::exit(1);
+    });
+
+    info!("{:?}", &domain_name);
 
     if !config_exists() {
         match create_config() {
@@ -90,7 +145,7 @@ pub fn handle_user_add(user_args: NewUserArgs) {
     let new_user = User {
         name: user.clone(),
         email: email.clone(),
-        origin: format!("git@{}-{}:{}/", &website, &user, &user),
+        origin: format!("git@{}-{}:{}/", &domain_name, &user, &user),
         ssh_key_path: ssh_path.clone(), // why is this single quoted
     };
 
@@ -103,14 +158,14 @@ pub fn handle_user_add(user_args: NewUserArgs) {
 
     println!(
         "Public key (make sure to add to {}):\n{}",
-        &website, &pub_content
+        &domain_name, &pub_content
     );
 
     // username is being used as host alias in ssh config
     // check ssh for format
-    let host_alias = format!("{}-{}", &website, &user);
+    let host_alias = format!("tilb-{}", &user);
 
-    add_to_ssh_config(&host_alias, &website, &user, &ssh_path)
+    add_to_ssh_config(&host_alias, &domain_name, &user, &ssh_path)
         .expect("failed to update ssh config");
 
     println!("User: {} <{}> added", user.green(), email.green());
