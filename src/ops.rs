@@ -5,6 +5,7 @@ use crate::ssh::{add_to_ssh_config, generate_ssh_key, get_ssh_dir_path, remove_f
 use inquire::validator::Validation;
 use inquire::{Confirm, Password, PasswordDisplayMode};
 use log::info;
+use owo_colors::OwoColorize;
 use regex::Regex;
 use std::process::Command;
 
@@ -29,8 +30,8 @@ pub fn handle_user_add(user_args: NewUserArgs) {
 
     if !is_reasonable_email(&email) {
         eprintln!(
-            "Warning: '{}' doesn't look like a valid email address",
-            email
+            "Erm, '{}' doesn't look like a valid email address",
+            email.bright_red()
         );
         let ans = Confirm::new("Continue anyway?")
             .with_default(false)
@@ -39,11 +40,11 @@ pub fn handle_user_add(user_args: NewUserArgs) {
         match ans {
             Ok(true) => {}
             Ok(false) => {
-                println!("Aborting.");
+                println!("see ya (¯꒳¯)ᐝ");
                 return;
             }
             Err(_) => {
-                println!("Aborting.");
+                println!("see ya (¯꒳¯)ᐝ");
                 return;
             }
         }
@@ -105,21 +106,27 @@ pub fn handle_user_add(user_args: NewUserArgs) {
 
     add_to_ssh_config(&host_alias, &user, &ssh_path).expect("failed to update ssh config");
 
-    println!("User: {} <{}> added", user, email);
+    println!("User: {} <{}> added", user.green(), email.green());
 }
 
 pub fn handle_user_remove(user: UserArgs) {
     let user = user.user;
 
     if !config_exists() {
-        println!("Config not found, add a new user via `tilb add`!");
+        println!(
+            "Config not found, add a new user via `{}`!",
+            "tilb add".blue()
+        );
         return;
     }
 
     let config = match read_config_file() {
         Ok(config) => config,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            println!("Config not found, add a new user via `tilb add`!");
+            println!(
+                "Config not found, add a new user via `{}`!",
+                "tilb add".blue()
+            );
             return;
         }
         Err(err) => {
@@ -142,11 +149,11 @@ pub fn handle_user_remove(user: UserArgs) {
     match ans {
         Ok(true) => {}
         Ok(false) => {
-            println!("Aborting.");
+            println!("see ya (¯꒳¯)ᐝ");
             return;
         }
         Err(_) => {
-            println!("Aborting.");
+            println!("see ya (¯꒳¯)ᐝ");
             return;
         }
     }
@@ -159,7 +166,7 @@ pub fn handle_user_remove(user: UserArgs) {
     let host_alias = format!("github-{}", user);
     remove_from_ssh_config(&host_alias).expect("failed to update ssh config");
 
-    println!("User: {} removed", user);
+    println!("User: {} removed", user.green());
 }
 
 pub fn handle_user_switch(user: UserArgs) {
@@ -173,7 +180,10 @@ pub fn handle_user_switch(user: UserArgs) {
     let config = match read_config_file() {
         Ok(config) => config,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            println!("Config not found, add a new user via `tilb add`!");
+            println!(
+                "Config not found, add a new user via `{}`!",
+                "tilb add".blue()
+            );
             return;
         }
         Err(err) => {
@@ -229,20 +239,29 @@ pub fn handle_user_switch(user: UserArgs) {
         }
     }
 
-    println!("Switched to user: {}", selected_user.name);
+    println!("Switched to user: {}", selected_user.name.green());
 }
 
 pub fn handle_user_list() {
-    // TODO: print something if no users
     match read_config_file() {
         Ok(config) => {
             println!("Users:");
+            if config.users.is_empty() {
+                println!(
+                    "(no users found, add a new user via `{}`)",
+                    "tilb add".blue()
+                );
+                return;
+            }
             for (_, user) in config.users {
                 println!("- {} <{}>", user.name, user.email);
             }
         }
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            println!("Config not found, add a new user via `tilb add`!");
+            println!(
+                "Config not found, add a new user via `{}`!",
+                "tilb add".blue()
+            );
         }
         Err(err) => {
             eprintln!("Error reading config: {}", err);
