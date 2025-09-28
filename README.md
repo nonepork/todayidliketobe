@@ -1,7 +1,7 @@
 <div align="center">
 
-Today I'd like to be
-<i>i should probably add a preview here someday</i>
+Today I'd like to be<br>
+<i><small>i should probably add a preview here someday</small></i>
 
 </div>
 
