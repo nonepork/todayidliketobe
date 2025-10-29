@@ -17,8 +17,8 @@ pub struct UsersConfig {
 pub struct User {
     pub name: String,
     pub email: String,
-    pub origin: String,
-    pub ssh_key_path: String,
+    pub git_host: String,
+    pub use_https: bool,
 }
 
 fn get_config_path() -> Option<PathBuf> {

@@ -1,4 +1,4 @@
-use log::info;
+use log::{debug, info};
 use std::process::Command;
 
 use inquire::{Text, validator::Validation};
@@ -48,6 +48,33 @@ pub fn get_repo_name_from_user() -> String {
             panic!("Error with your repo name input: {}", err);
         }
     }
+}
+
+pub fn parse_origin_url(url: &str) -> Option<(String, String)> {
+    let url = url.trim().trim_end_matches(".git");
+
+    // ssh style: git@github.com:owner/repo
+    if url.contains(':') && url.contains('@') {
+        let after_colon = url.split_once(':')?.1;
+        let mut parts = after_colon.split('/');
+        debug!("{:?}", parts);
+        let owner = parts.next()?.to_string();
+        let repo = parts.next()?.to_string();
+        return Some((owner, repo));
+    }
+
+    // https style: https://github.com/owner/repo
+    if url.contains("://") {
+        let parts: Vec<&str> = url.split('/').collect();
+        debug!("{:?}", parts);
+        if parts.len() >= 2 {
+            let owner = parts[parts.len() - 2].to_string();
+            let repo = parts[parts.len() - 1].to_string();
+            return Some((owner, repo));
+        }
+    }
+
+    None
 }
 
 pub fn set_git_remote(full_origin: &str) -> Result<(), Box<dyn std::error::Error>> {

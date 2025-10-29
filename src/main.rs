@@ -17,6 +17,7 @@ fn check_git_installed() -> bool {
 }
 
 fn main() {
+    env_logger::init();
     let args = TilbArgs::parse();
 
     if check_git_installed() {

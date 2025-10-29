@@ -1,6 +1,8 @@
 use crate::args::{NewUserArgs, UserArgs};
 use crate::config::{User, add_user, config_exists, create_config, delete_user, read_config_file};
-use crate::git::{check_cwd_is_repo, get_repo_name, get_repo_name_from_user, set_git_remote};
+use crate::git::{
+    check_cwd_is_repo, get_repo_name, get_repo_name_from_user, parse_origin_url, set_git_remote,
+};
 use crate::ssh::{add_to_ssh_config, generate_ssh_key, get_ssh_dir_path, remove_from_ssh_config};
 use inquire::validator::Validation;
 use inquire::{Confirm, Password, PasswordDisplayMode};
@@ -11,7 +13,6 @@ use std::collections::HashSet;
 use std::process::Command;
 
 // TODO:
-// support websites other than github
 // make return properly handled
 // print message better
 // handle ctrlc
@@ -41,7 +42,7 @@ fn is_git_hosting_site(url: &str) -> bool {
         "bitbucket.org",
         "gitea.io",
         "codeberg.org",
-        "sr.ht", // SourceHut
+        "sr.ht",
     ]
     .into();
 
@@ -54,7 +55,9 @@ pub fn handle_user_add(user_args: NewUserArgs) {
     let user = user_args.user;
     let email = user_args.email;
     let website = user_args.website;
+    let use_https = user_args.use_https;
 
+    // TODO: check if user already exists
     println!("Adding user: {}", user.green());
 
     if !is_reasonable_email(&email) {
@@ -119,54 +122,56 @@ pub fn handle_user_add(user_args: NewUserArgs) {
         }
     }
 
-    let validator = |input: &str| {
-        if input.contains(' ') {
-            Ok(Validation::Invalid(
-                "Passphrase cannot contain spaces".into(),
-            ))
-        } else {
-            Ok(Validation::Valid)
-        }
-    };
+    if !use_https {
+        let validator = |input: &str| {
+            if input.contains(' ') {
+                Ok(Validation::Invalid(
+                    "Passphrase cannot contain spaces".into(),
+                ))
+            } else {
+                Ok(Validation::Valid)
+            }
+        };
 
-    let passphrase = Password::new("Enter passphrase (leave empty for no passphrase):")
-        .with_display_mode(PasswordDisplayMode::Masked)
-        .with_validator(validator)
-        .prompt()
-        .expect("failed to read passphrase");
+        let passphrase = Password::new("Enter passphrase (leave empty for no passphrase):")
+            .with_display_mode(PasswordDisplayMode::Masked)
+            .with_validator(validator)
+            .prompt()
+            .expect("failed to read passphrase");
 
-    let ssh_file = format!("id_{}_ed25519", &user);
-    let ssh_path = get_ssh_dir_path()
-        .expect("no home dir")
-        .join(ssh_file)
-        .display()
-        .to_string();
+        let ssh_file = format!("id_{}_ed25519", &user);
+        let ssh_path = get_ssh_dir_path()
+            .expect("no home dir")
+            .join(ssh_file)
+            .display()
+            .to_string();
+
+        let pub_content = generate_ssh_key(&user, &passphrase).expect("failed to generate ssh key");
+
+        println!(
+            "Public key (make sure to add to {}):\n{}",
+            &domain_name, &pub_content
+        );
+
+        // username is being used as host alias in ssh config
+        // check ssh for format
+        let host_alias = format!("tilb-{}", &user);
+
+        add_to_ssh_config(&host_alias, &domain_name, &user, &ssh_path)
+            .expect("failed to update ssh config");
+    }
 
     let new_user = User {
         name: user.clone(),
         email: email.clone(),
-        origin: format!("git@{}-{}:{}/", &domain_name, &user, &user),
-        ssh_key_path: ssh_path.clone(), // why is this single quoted
+        git_host: domain_name.clone(),
+        use_https: use_https,
     };
 
     if let Err(err) = add_user(new_user) {
         eprintln!("Error updating config: {}", err);
         return;
     }
-
-    let pub_content = generate_ssh_key(&user, &passphrase).expect("failed to generate ssh key");
-
-    println!(
-        "Public key (make sure to add to {}):\n{}",
-        &domain_name, &pub_content
-    );
-
-    // username is being used as host alias in ssh config
-    // check ssh for format
-    let host_alias = format!("tilb-{}", &user);
-
-    add_to_ssh_config(&host_alias, &domain_name, &user, &ssh_path)
-        .expect("failed to update ssh config");
 
     println!("User: {} <{}> added", user.green(), email.green());
 }
@@ -261,18 +266,16 @@ pub fn handle_user_switch(user: UserArgs) {
         return;
     };
 
-    let repo_name = match get_repo_name() {
-        // tries to automatically get repo name
-        Some(origin_url) => {
-            if let Some((_, name)) = origin_url.rsplit_once('/') {
-                name.to_string()
-            } else {
-                eprintln!("Could not parse repository name from origin URL");
-                get_repo_name_from_user()
-            }
+    let (repo_owner, repo_name) = match get_repo_name() {
+        Some(origin_url) => parse_origin_url(&origin_url).unwrap_or_else(|| {
+            eprintln!("Couldn't parse origin URL, falling back to cached owner");
+            let repo_name = get_repo_name_from_user();
+            (selected_user.name.clone(), repo_name)
+        }),
+        None => {
+            let repo_name = get_repo_name_from_user();
+            (selected_user.name.clone(), repo_name)
         }
-        // if unsuccessful, ask for it
-        None => get_repo_name_from_user(),
     };
 
     Command::new("git")
@@ -291,13 +294,31 @@ pub fn handle_user_switch(user: UserArgs) {
         .status()
         .expect("Failed to set git user.email");
 
-    let full_origin = format!("{}{}", selected_user.origin, repo_name);
+    if selected_user.use_https {
+        let full_origin = format!(
+            "https://{}/{}/{}",
+            selected_user.git_host, repo_owner, repo_name
+        );
 
-    match set_git_remote(&full_origin) {
-        Ok(()) => {}
-        Err(err) => {
-            eprintln!("Error setting git remote: {}", err);
-            return;
+        match set_git_remote(&full_origin) {
+            Ok(()) => {}
+            Err(err) => {
+                eprintln!("Error setting git remote: {}", err);
+                return;
+            }
+        }
+    } else {
+        let full_origin = format!(
+            "git@{}-{}:{}/{}",
+            selected_user.git_host, selected_user.name, repo_owner, repo_name
+        );
+
+        match set_git_remote(&full_origin) {
+            Ok(()) => {}
+            Err(err) => {
+                eprintln!("Error setting git remote: {}", err);
+                return;
+            }
         }
     }
 

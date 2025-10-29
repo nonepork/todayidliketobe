@@ -39,15 +39,16 @@ Same as above, haven't tested but should work in theory.
 To check all possible actions:
 
 ```bash
-tilb -h --help
+tilb --help
 ```
 
 Say you have two git accounts, one for work named as workuser and the other for personal named as personaluser.
+And you already logged in as personaluser with any credential manager.
 You can add those users like so:
 
 ```bash
 tilb add workuser workusermail@lovely.com
-tilb add personaluser personaluser@lonely.com
+tilb add -u personaluser personaluser@lonely.com
 ```
 
 Once added, you can check it has been successfully add via:

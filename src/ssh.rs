@@ -15,7 +15,6 @@ Host github.com-username
   User git
   IdentityFile ~/.ssh/id_username_ed25519
 
-i prob should support websites other than github?
 */
 
 // TODO:

@@ -34,6 +34,9 @@ pub struct NewUserArgs {
     /// The website of the git host, e.g. github.com, gitlab.com, bitbucket.org
     #[arg(long, short, default_value_t = String::from("github.com"))]
     pub website: String,
+    /// Use https instead of ssh
+    #[arg(long, short, default_value_t = false)]
+    pub use_https: bool,
 }
 
 #[derive(Debug, Args)]
